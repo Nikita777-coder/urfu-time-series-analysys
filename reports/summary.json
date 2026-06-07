@@ -1,0 +1,101 @@
+{
+  "raw_rows": 30894,
+  "start_date": "2023-08-04",
+  "end_date": "2024-06-27",
+  "observations_daily": 329,
+  "target": "Temperature",
+  "frequency": "D",
+  "test_days": 60,
+  "forecast_horizon_days": 14,
+  "model_count": 17,
+  "best_model": {
+    "family": "ML",
+    "model": "Ridge regression with lag features",
+    "MAE": 1.9254542586114638,
+    "RMSE": 2.468380754507475,
+    "sMAPE_%": 9.493286427616374,
+    "MASE": 1.4823212866872983,
+    "notes": "Лаги, rolling-признаки и календарные признаки; L2-регуляризация."
+  },
+  "top_5_models": [
+    {
+      "family": "ML",
+      "model": "Ridge regression with lag features",
+      "MAE": 1.9254542586114638,
+      "RMSE": 2.468380754507475,
+      "sMAPE_%": 9.493286427616374,
+      "MASE": 1.4823212866872983,
+      "notes": "Лаги, rolling-признаки и календарные признаки; L2-регуляризация."
+    },
+    {
+      "family": "ML",
+      "model": "HistGradientBoosting with lag features",
+      "MAE": 3.0037393655951723,
+      "RMSE": 3.5326138363644217,
+      "sMAPE_%": 14.284361180433839,
+      "MASE": 2.3124448588528086,
+      "notes": "Градиентный бустинг по лаговым признакам."
+    },
+    {
+      "family": "ML",
+      "model": "Random forest with lag features",
+      "MAE": 3.223851392596779,
+      "RMSE": 3.7388216227381155,
+      "sMAPE_%": 15.219296546681457,
+      "MASE": 2.481899283241817,
+      "notes": "Нелинейная модель на лаговых и календарных признаках."
+    },
+    {
+      "family": "statistical",
+      "model": "Holt linear trend",
+      "MAE": 3.498481802856891,
+      "RMSE": 3.992946088471668,
+      "sMAPE_%": 16.376594351550292,
+      "MASE": 2.6933249773498673,
+      "notes": "Линейный тренд без сезонной компоненты."
+    },
+    {
+      "family": "baseline/statistical",
+      "model": "Naive",
+      "MAE": 3.6735593718744908,
+      "RMSE": 4.191737134169929,
+      "sMAPE_%": 17.102429417351377,
+      "MASE": 2.828109382752157,
+      "notes": "Последнее наблюдение переносится на весь горизонт."
+    }
+  ],
+  "consensus_anomalies": 6,
+  "anomaly_dates": [
+    "2023-08-20",
+    "2023-12-22",
+    "2023-12-23",
+    "2024-01-02",
+    "2024-01-25",
+    "2024-02-07"
+  ],
+  "diagnostics": {
+    "adf_original": {
+      "statistic": -0.4651223718905565,
+      "p_value": 0.8986448169884433,
+      "used_lag": 14,
+      "nobs": 314
+    },
+    "adf_first_difference": {
+      "statistic": -5.67936605216258,
+      "p_value": 8.55668439374945e-07,
+      "used_lag": 13,
+      "nobs": 314
+    },
+    "best_model_ljung_box": {
+      "7": {
+        "lb_stat": 209.713755180788,
+        "p_value": 1.0035316032662363e-41
+      },
+      "14": {
+        "lb_stat": 265.6484040483333,
+        "p_value": 1.6497893808035642e-48
+      }
+    }
+  },
+  "pipeline_runtime_seconds": 7.072
+}

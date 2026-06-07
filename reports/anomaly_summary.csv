@@ -1,0 +1,5 @@
+method,count
+STL robust z-score,39
+Rolling IQR,9
+IsolationForest,12
+is_anomaly_consensus,6

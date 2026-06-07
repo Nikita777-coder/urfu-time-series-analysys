@@ -1,0 +1,24 @@
+{
+  "adf_original": {
+    "statistic": -0.4651223718905565,
+    "p_value": 0.8986448169884433,
+    "used_lag": 14,
+    "nobs": 314
+  },
+  "adf_first_difference": {
+    "statistic": -5.67936605216258,
+    "p_value": 8.55668439374945e-07,
+    "used_lag": 13,
+    "nobs": 314
+  },
+  "best_model_ljung_box": {
+    "7": {
+      "lb_stat": 209.713755180788,
+      "p_value": 1.0035316032662363e-41
+    },
+    "14": {
+      "lb_stat": 265.6484040483333,
+      "p_value": 1.6497893808035642e-48
+    }
+  }
+}
