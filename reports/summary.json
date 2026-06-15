@@ -97,5 +97,29 @@
       }
     }
   },
-  "pipeline_runtime_seconds": 7.072
+  "backtesting": {
+    "windows": 4,
+    "best_model": {
+      "family": "statistical",
+      "model": "Holt linear trend",
+      "folds": 4,
+      "MAE_mean": 0.9315266885660691,
+      "MAE_std": 0.20067698154524635,
+      "RMSE_mean": 1.10363672838383,
+      "RMSE_std": 0.24299796200732032,
+      "sMAPE_mean": 4.512614793081877,
+      "MASE_mean": 0.7262717940969322
+    }
+  },
+  "reliability": {
+    "method": "Empirical conformal-style intervals from holdout absolute errors",
+    "model": "Ridge regression with lag features",
+    "absolute_error_q80": 3.2041582649980587,
+    "absolute_error_q95": 5.028373019522957,
+    "coverage_80": 0.8,
+    "coverage_95": 0.95,
+    "mean_interval_width_80": 6.4083165299961165,
+    "mean_interval_width_95": 10.056746039045914
+  },
+  "pipeline_runtime_seconds": 23.346
 }

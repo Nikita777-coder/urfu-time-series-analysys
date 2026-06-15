@@ -42,6 +42,9 @@ REPORTS_DIR = ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 METRICS_PATH = REPORTS_DIR / "model_comparison.csv"
 FORECASTS_PATH = REPORTS_DIR / "forecast_predictions.csv"
+BACKTESTING_PATH = REPORTS_DIR / "backtesting_summary.csv"
+PREDICTION_INTERVALS_PATH = REPORTS_DIR / "prediction_intervals.csv"
+RELIABILITY_PATH = REPORTS_DIR / "reliability.json"
 ANOMALIES_PATH = REPORTS_DIR / "anomaly_summary.csv"
 ANOMALY_DETAILS_PATH = REPORTS_DIR / "anomaly_details.csv"
 DIAGNOSTICS_PATH = REPORTS_DIR / "diagnostics.json"
@@ -53,6 +56,8 @@ TEST_DAYS = 60
 FORECAST_HORIZON_DAYS = 14
 SEASON_LENGTH = 7
 RANDOM_STATE = 42
+BACKTESTING_HORIZON = 14
+BACKTESTING_WINDOWS = 4
 
 
 QUALITY_COLUMNS_SUFFIX = " [quality]"
@@ -500,12 +505,91 @@ def diagnostics(series: pd.Series, best_errors: pd.Series) -> dict[str, object]:
     }
 
 
+def rolling_origin_backtest(
+    series: pd.Series,
+    selected_models: list[str],
+    horizon: int = BACKTESTING_HORIZON,
+    windows: int = BACKTESTING_WINDOWS,
+) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    first_cutoff = len(series) - TEST_DAYS
+    cutoffs = [first_cutoff + i * horizon for i in range(windows)]
+    cutoffs = [cutoff for cutoff in cutoffs if cutoff + horizon <= len(series)]
+
+    for fold, cutoff in enumerate(cutoffs, start=1):
+        train = series.iloc[:cutoff]
+        test = series.iloc[cutoff : cutoff + horizon]
+        results = statistical_forecasts(train, horizon) + ml_forecasts(train, horizon)
+
+        for result in results:
+            if result.model not in selected_models or np.isnan(result.forecast).all():
+                continue
+            metric_row = compute_metrics(test, result.forecast, train, result.family, result.model, result.notes)
+            metric_row["fold"] = fold
+            metric_row["train_end"] = str(train.index[-1].date())
+            metric_row["test_start"] = str(test.index[0].date())
+            metric_row["test_end"] = str(test.index[-1].date())
+            rows.append(metric_row)
+
+    summary = (
+        pd.DataFrame(rows)
+        .groupby(["family", "model"], as_index=False)
+        .agg(
+            folds=("fold", "nunique"),
+            MAE_mean=("MAE", "mean"),
+            MAE_std=("MAE", "std"),
+            RMSE_mean=("RMSE", "mean"),
+            RMSE_std=("RMSE", "std"),
+            sMAPE_mean=("sMAPE_%", "mean"),
+            MASE_mean=("MASE", "mean"),
+        )
+        .sort_values(["MASE_mean", "RMSE_mean"])
+        .reset_index(drop=True)
+    )
+    summary.to_csv(BACKTESTING_PATH, index=False)
+    return summary
+
+
+def prediction_intervals(
+    forecasts: pd.DataFrame,
+    best_model_name: str,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    best = forecasts[forecasts["model"] == best_model_name].copy()
+    absolute_errors = best["error"].abs()
+    q80 = float(absolute_errors.quantile(0.80))
+    q95 = float(absolute_errors.quantile(0.95))
+
+    best["lower_80"] = best["forecast"] - q80
+    best["upper_80"] = best["forecast"] + q80
+    best["lower_95"] = best["forecast"] - q95
+    best["upper_95"] = best["forecast"] + q95
+    best["covered_80"] = best["actual"].between(best["lower_80"], best["upper_80"])
+    best["covered_95"] = best["actual"].between(best["lower_95"], best["upper_95"])
+    best.to_csv(PREDICTION_INTERVALS_PATH, index=False)
+
+    report = {
+        "method": "Empirical conformal-style intervals from holdout absolute errors",
+        "model": best_model_name,
+        "absolute_error_q80": q80,
+        "absolute_error_q95": q95,
+        "coverage_80": float(best["covered_80"].mean()),
+        "coverage_95": float(best["covered_95"].mean()),
+        "mean_interval_width_80": float((best["upper_80"] - best["lower_80"]).mean()),
+        "mean_interval_width_95": float((best["upper_95"] - best["lower_95"]).mean()),
+    }
+    with RELIABILITY_PATH.open("w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    return best, report
+
+
 def plot_report_figures(
     daily: pd.DataFrame,
     train: pd.Series,
     test: pd.Series,
     forecasts: pd.DataFrame,
     anomaly_details: pd.DataFrame,
+    backtesting: pd.DataFrame,
+    intervals: pd.DataFrame,
 ) -> None:
     _ensure_dirs()
     y = daily[TARGET]
@@ -550,6 +634,45 @@ def plot_report_figures(
     plt.tight_layout()
     plt.savefig(FIGURES_DIR / "forecast_comparison.png", dpi=160)
     plt.close()
+
+    if not backtesting.empty:
+        plt.figure(figsize=(12, 4))
+        ordered = backtesting.sort_values("MASE_mean")
+        plt.barh(ordered["model"], ordered["MASE_mean"], xerr=ordered["RMSE_std"].fillna(0) * 0)
+        plt.gca().invert_yaxis()
+        plt.title("Rolling-origin backtesting: mean MASE")
+        plt.xlabel("MASE")
+        plt.grid(axis="x", alpha=0.25)
+        plt.tight_layout()
+        plt.savefig(FIGURES_DIR / "backtesting_mase.png", dpi=160)
+        plt.close()
+
+    if not intervals.empty:
+        interval_dates = pd.to_datetime(intervals[DATE_COL])
+        plt.figure(figsize=(12, 5))
+        plt.plot(interval_dates, intervals["actual"], label="actual", color="black", linewidth=2)
+        plt.plot(interval_dates, intervals["forecast"], label="forecast", color="tab:blue")
+        plt.fill_between(
+            interval_dates,
+            intervals["lower_95"].astype(float),
+            intervals["upper_95"].astype(float),
+            alpha=0.20,
+            label="95% empirical interval",
+        )
+        plt.fill_between(
+            interval_dates,
+            intervals["lower_80"].astype(float),
+            intervals["upper_80"].astype(float),
+            alpha=0.30,
+            label="80% empirical interval",
+        )
+        plt.title("Best-model forecast with empirical prediction intervals")
+        plt.ylabel("Temperature")
+        plt.grid(alpha=0.25)
+        plt.legend(fontsize=8)
+        plt.tight_layout()
+        plt.savefig(FIGURES_DIR / "prediction_intervals.png", dpi=160)
+        plt.close()
 
     anomaly_dates = pd.to_datetime(
         anomaly_details.loc[anomaly_details["is_anomaly_consensus"], DATE_COL]
@@ -612,7 +735,20 @@ def run_pipeline() -> dict[str, object]:
     with DIAGNOSTICS_PATH.open("w", encoding="utf-8") as f:
         json.dump(diagnostic_report, f, ensure_ascii=False, indent=2)
 
-    plot_report_figures(daily, train, test, forecasts, anomaly_details)
+    selected_backtest_models = [
+        "Naive",
+        "Seasonal naive, lag 7",
+        "Holt linear trend",
+        "SARIMAX (1,1,1)x(1,0,1,7)",
+        "Ridge regression with lag features",
+        "HistGradientBoosting with lag features",
+        "Random forest with lag features",
+        "MLP shallow (32)",
+    ]
+    backtesting = rolling_origin_backtest(series, selected_backtest_models)
+    intervals, reliability_report = prediction_intervals(forecasts, best_model_name)
+
+    plot_report_figures(daily, train, test, forecasts, anomaly_details, backtesting, intervals)
 
     elapsed = time.perf_counter() - started
     summary = {
@@ -632,6 +768,11 @@ def run_pipeline() -> dict[str, object]:
             anomaly_details["is_anomaly_consensus"], DATE_COL
         ].astype(str).tolist(),
         "diagnostics": diagnostic_report,
+        "backtesting": {
+            "windows": int(backtesting["folds"].max()) if not backtesting.empty else 0,
+            "best_model": backtesting.iloc[0].to_dict() if not backtesting.empty else {},
+        },
+        "reliability": reliability_report,
         "pipeline_runtime_seconds": round(elapsed, 3),
     }
     with SUMMARY_PATH.open("w", encoding="utf-8") as f:
